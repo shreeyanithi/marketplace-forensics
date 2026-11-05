@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Marketplace Forensic Investigation System</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f4f6f9;color:#1c2430}
+header{background:#12263f;color:#fff;padding:14px 24px}header small{opacity:.7}
+main{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;padding:16px 24px}
+.card{background:#fff;border-radius:8px;padding:14px;box-shadow:0 1px 3px #0002}
+.kpis{display:flex;gap:10px;grid-column:1/3}.kpis .card{flex:1;text-align:center}.kpis b{font-size:26px;display:block}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px;text-align:left;border-bottom:1px solid #eee}
+tr.row{cursor:pointer}tr.row:hover{background:#eef3fb}
+.tag{padding:2px 8px;border-radius:10px;color:#fff;font-size:12px}.High{background:#c62828}.Medium{background:#ef8f00}.Low{background:#2e7d32}
+input,select{padding:6px;margin-right:6px}li{margin:4px 0;font-size:13px}.on{color:#c62828;font-weight:600}.off{color:#888}
+.ok{background:#e8f5e9;padding:6px;border-radius:4px;margin:4px 0;font-size:13px}
+</style></head><body>
+<header><b>Online Marketplace Forensic Investigation System</b><br><small>Detect &rarr; Investigate &rarr; Explain</small></header>
+<main><div class="kpis" id="kpis"></div>
+<div class="card"><input id="q" placeholder="Search seller id"><select id="p"><option value="">All priorities</option><option>High</option><option>Medium</option><option>Low</option></select>
+<table><thead><tr><th>Seller</th><th>State</th><th>Orders</th><th>Revenue</th><th>Score</th><th>Priority</th></tr></thead><tbody id="tb"></tbody></table></div>
+<div class="card" id="detail"><i>Select a seller to see its evidence profile.</i></div></main>
+<script>
+const $=id=>document.getElementById(id);let ch=[];
+async function kpis(){const m=await (await fetch('/api/summary')).json();
+$('kpis').innerHTML=`<div class=card><b>${m.sellers}</b>sellers</div>`+['High','Medium','Low'].map(k=>`<div class=card><b>${m.priority[k]}</b>${k} priority</div>`).join('')+
+`<div class=card><b>${m.signal_counts['Review burst']}</b>review bursts</div>`}
+async function list(){const r=await (await fetch(`/api/sellers?priority=${$('p').value}&q=${$('q').value}`)).json();
+$('tb').innerHTML=r.map(s=>`<tr class=row onclick="show('${s.seller_id}')"><td>${s.seller_id.slice(0,10)}…</td><td>${s.state||''}</td><td>${s.orders}</td><td>${s.revenue.toLocaleString()}</td><td>${s.score}</td><td><span class="tag ${s.priority}">${s.priority}</span></td></tr>`).join('')}
+async function show(id){const s=await (await fetch('/api/seller/'+id)).json();ch.forEach(c=>c.destroy());ch=[];
+$('detail').innerHTML=`<h3>${id}</h3><span class="tag ${s.priority}">${s.priority}</span> score ${s.score}
+<p>Orders ${s.orders} · Customers ${s.customers} · Rating ${s.avg_rating??'n/a'} · Late ${(s.late_rate*100).toFixed(0)}% · Cancelled ${(s.cancel_rate*100).toFixed(0)}%<br>
+Abnormal behaviour began: <b>${s.onset||'no spike detected'}</b> · Peak: <b>${s.peak}</b> (${s.peak_orders} orders/day)</p>
+<h4>Evidence</h4><ul>${s.signals.map(x=>`<li class="${x.triggered?'on':'off'}">${x.triggered?'⚠':'✓'} ${x.name} <small>— ${x.detail}</small></li>`).join('')}</ul>
+${s.explanations.length?'<h4>Possible legitimate explanations</h4>'+s.explanations.map(e=>`<div class=ok>${e}</div>`).join(''):''}
+<canvas id=c1 height=130></canvas>${s.benford?'<canvas id=c2 height=110></canvas>':''}`;
+ch.push(new Chart($('c1'),{type:'bar',data:{labels:s.daily.date,datasets:[{label:'Daily orders',data:s.daily.orders,backgroundColor:'#1565c0'},{label:'5-star reviews',data:s.daily.five_star,backgroundColor:'#ef8f00'}]},options:{scales:{x:{ticks:{maxTicksLimit:8}}}}}));
+if(s.benford)ch.push(new Chart($('c2'),{type:'line',data:{labels:[1,2,3,4,5,6,7,8,9],datasets:[{label:'Observed first digit',data:s.benford.observed,borderColor:'#c62828'},{label:'Benford expected',data:[1,2,3,4,5,6,7,8,9].map(d=>Math.log10(1+1/d)),borderColor:'#555',borderDash:[5,4]}]}}))}
+$('q').oninput=list;$('p').onchange=list;kpis();list();
+</script></body></html>
